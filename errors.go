@@ -14,7 +14,9 @@ type ProblemError struct {
 	Message string  `json:"message"`
 }
 type Problem struct {
+	Type   string         `json:"type"`
 	Title  string         `json:"title"`
+	Status int            `json:"status"`
 	Detail string         `json:"detail"`
 	Code   string         `json:"code"`
 	Field  *string        `json:"field"`
@@ -30,9 +32,6 @@ type APIError struct {
 
 func (e *APIError) Error() string {
 	detail := e.Problem.Detail
-	if detail == "" && len(e.Problem.Errors) > 0 {
-		detail = e.Problem.Errors[0].Message
-	}
 	if detail == "" {
 		detail = e.Code()
 	}
@@ -42,15 +41,9 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("Paymos API %d: %s", e.Status, detail)
 }
 func (e *APIError) Code() string {
-	if len(e.Problem.Errors) > 0 {
-		return e.Problem.Errors[0].Code
-	}
 	return e.Problem.Code
 }
 func (e *APIError) Field() *string {
-	if len(e.Problem.Errors) > 0 {
-		return e.Problem.Errors[0].Field
-	}
 	return e.Problem.Field
 }
 func (e *APIError) Kind() string {
@@ -97,6 +90,21 @@ func (e *APIError) RetryAfter() (time.Duration, bool) {
 
 func newAPIError(status int, body []byte, header http.Header) *APIError {
 	value := &APIError{Status: status, Body: append([]byte(nil), body...), Header: header.Clone()}
-	_ = json.Unmarshal(body, &value.Problem)
+	var wire struct {
+		Type   *string        `json:"type"`
+		Title  *string        `json:"title"`
+		Status *int           `json:"status"`
+		Detail *string        `json:"detail"`
+		Code   *string        `json:"code"`
+		Field  *string        `json:"field"`
+		Errors []ProblemError `json:"errors"`
+	}
+	if json.Unmarshal(body, &wire) == nil && wire.Status != nil && *wire.Status == status &&
+		wire.Type != nil && wire.Title != nil && wire.Detail != nil && wire.Code != nil {
+		value.Problem = Problem{
+			Type: *wire.Type, Title: *wire.Title, Status: *wire.Status,
+			Detail: *wire.Detail, Code: *wire.Code, Field: wire.Field, Errors: wire.Errors,
+		}
+	}
 	return value
 }

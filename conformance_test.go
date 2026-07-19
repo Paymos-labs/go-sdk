@@ -47,6 +47,10 @@ type contractValue struct {
 			Now       int64  `json:"now"`
 			Tolerance int64  `json:"tolerance_seconds"`
 		} `json:"webhook"`
+		ProblemDetails struct {
+			Flat  map[string]any `json:"flat"`
+			Multi map[string]any `json:"multi"`
+		} `json:"problem_details"`
 	} `json:"vectors"`
 }
 
@@ -86,6 +90,24 @@ func TestConformanceWebhook(t *testing.T) {
 	}
 	if err = verifier.Verify(v.Header, []byte(v.RawBody), time.Unix(v.Now, 0)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestProblemDetailsUsesTopLevelCode(t *testing.T) {
+	vector := contract(t).Vectors.ProblemDetails.Multi
+	body, err := json.Marshal(vector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	apiError := newAPIError(400, body, make(http.Header))
+	if apiError.Code() != "validation_failed" {
+		t.Fatalf("top-level code must be authoritative, got %q", apiError.Code())
+	}
+	if apiError.Field() != nil {
+		t.Fatalf("request-level field must come only from the top level, got %q", *apiError.Field())
+	}
+	if len(apiError.Problem.Errors) != 1 || apiError.Problem.Errors[0].Code != "field_required" {
+		t.Fatalf("field errors must remain available: %#v", apiError.Problem.Errors)
 	}
 }
 func TestCompleteResourceRoutes(t *testing.T) {

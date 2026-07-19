@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-07-19
+
+- fix: align SDK problem details semantics
+
 ## [2.0.0]
 
 - Move the module to the semantic import path `github.com/Paymos-labs/go-sdk/v2`.
