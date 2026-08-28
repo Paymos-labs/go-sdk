@@ -59,6 +59,8 @@ type Client struct {
 	clock                      func() time.Time
 	Invoices                   *InvoicesService
 	Withdrawals                *WithdrawalsService
+	PaymentChannels            *PaymentChannelsService
+	PaymentChannelDeposits     *PaymentChannelDepositsService
 	Balances                   *BalancesService
 	System                     *SystemService
 }
@@ -75,6 +77,8 @@ func NewClient(apiKey, apiSecret string, options ...Option) (*Client, error) {
 	}
 	c.Invoices = &InvoicesService{c}
 	c.Withdrawals = &WithdrawalsService{c}
+	c.PaymentChannels = &PaymentChannelsService{c}
+	c.PaymentChannelDeposits = &PaymentChannelDepositsService{c}
 	c.Balances = &BalancesService{c}
 	c.System = &SystemService{c}
 	return c, nil
@@ -233,6 +237,68 @@ func (s *WithdrawalsService) SimulateCompletion(ctx context.Context, id string) 
 	return object[Withdrawal](ctx, s.client, "POST", "/v1/sandbox/withdrawals/"+EncodePathSegment(id)+"/simulate-completion", "", nil)
 }
 
+type PaymentChannelsService struct{ client *Client }
+
+// Create makes a channel for a payer — or hands back the one that already exists. The pair
+// project_id + external_id is the idempotency key, so a replay answers 200 with the same channel
+// instead of 201 with a duplicate. Both are a channel; a caller never inspects the status.
+func (s *PaymentChannelsService) Create(ctx context.Context, payload CreatePaymentChannelParams) (PaymentChannel, error) {
+	return object[PaymentChannel](ctx, s.client, "POST", "/v1/payment-channels", "", payload)
+}
+func (s *PaymentChannelsService) Get(ctx context.Context, id string) (PaymentChannel, error) {
+	return object[PaymentChannel](ctx, s.client, "GET", "/v1/payment-channels/"+EncodePathSegment(id), "", nil)
+}
+
+// List is an ordinary keyset page: NextCursor is nil on the last one. Contrast
+// PaymentChannelDepositsService.Read, whose cursor never terminates.
+func (s *PaymentChannelsService) List(ctx context.Context, filters PaymentChannelListParams) (Page[PaymentChannel], error) {
+	query, err := BuildQuery(filters)
+	if err != nil {
+		return Page[PaymentChannel]{}, err
+	}
+	var value Page[PaymentChannel]
+	err = s.client.request(ctx, "GET", "/v1/payment-channels", query, nil, &value)
+	return value, err
+}
+
+// Block stops the channel accepting payments and returns the updated channel — it is not a void call.
+func (s *PaymentChannelsService) Block(ctx context.Context, id string) (PaymentChannel, error) {
+	return object[PaymentChannel](ctx, s.client, "POST", "/v1/payment-channels/"+EncodePathSegment(id)+"/block", "", nil)
+}
+func (s *PaymentChannelsService) Unblock(ctx context.Context, id string) (PaymentChannel, error) {
+	return object[PaymentChannel](ctx, s.client, "POST", "/v1/payment-channels/"+EncodePathSegment(id)+"/unblock", "", nil)
+}
+
+// SimulateDeposit is sandbox only — a production credential gets an error, not a deposit.
+func (s *PaymentChannelsService) SimulateDeposit(ctx context.Context, id string, payload SimulateDepositParams) (PaymentChannelDeposit, error) {
+	switch payload.Stage {
+	case "", SimulateDepositConfirming, SimulateDepositReorged, SimulateDepositConfirmed:
+	default:
+		return PaymentChannelDeposit{}, errors.New("invalid simulation stage")
+	}
+	return object[PaymentChannelDeposit](ctx, s.client, "POST", "/v1/sandbox/payment-channels/"+EncodePathSegment(id)+"/simulate-deposit", "", payload)
+}
+
+type PaymentChannelDepositsService struct{ client *Client }
+
+func (s *PaymentChannelDepositsService) Get(ctx context.Context, id string) (PaymentChannelDeposit, error) {
+	return object[PaymentChannelDeposit](ctx, s.client, "GET", "/v1/payment-channel-deposits/"+EncodePathSegment(id), "", nil)
+}
+
+// Read reads ONE page of the confirmed-deposit feed. It is deliberately not called List and
+// deliberately has no iterator: the feed never ends, so a helper that looped until the cursor was
+// empty would either loop forever or — worse — stop on the first quiet page and leave a merchant's
+// reconciliation silently behind. Store the returned cursor and pass it back on the next poll.
+func (s *PaymentChannelDepositsService) Read(ctx context.Context, filters PaymentChannelDepositFeedParams) (PaymentChannelDepositFeedPage, error) {
+	query, err := BuildQuery(filters)
+	if err != nil {
+		return PaymentChannelDepositFeedPage{}, err
+	}
+	var value PaymentChannelDepositFeedPage
+	err = s.client.request(ctx, "GET", "/v1/payment-channel-deposits", query, nil, &value)
+	return value, err
+}
+
 type BalancesService struct{ client *Client }
 
 func (s *BalancesService) Get(ctx context.Context) ([]Balance, error) {
@@ -279,6 +345,16 @@ func NewWithdrawalIterator(service *WithdrawalsService, filters WithdrawalListPa
 	return newIterator(service.List, filters, maxPages,
 		func(value WithdrawalListParams) *string { return value.Cursor },
 		func(value *WithdrawalListParams, cursor string) { value.Cursor = &cursor },
+	)
+}
+
+// NewPaymentChannelIterator walks the channel LIST, which ends: it stops when the page hands back a
+// null cursor. There is deliberately no counterpart for the deposit feed — see
+// PaymentChannelDepositsService.Read.
+func NewPaymentChannelIterator(service *PaymentChannelsService, filters PaymentChannelListParams, maxPages int) *Iterator[PaymentChannel, PaymentChannelListParams] {
+	return newIterator(service.List, filters, maxPages,
+		func(value PaymentChannelListParams) *string { return value.Cursor },
+		func(value *PaymentChannelListParams, cursor string) { value.Cursor = &cursor },
 	)
 }
 func newIterator[T any, F any](fetch func(context.Context, F) (Page[T], error), filters F, maxPages int, readCursor func(F) *string, writeCursor func(*F, string)) *Iterator[T, F] {

@@ -29,6 +29,16 @@ type contractValue struct {
 			Body          string `json:"body"`
 			Authorization string `json:"authorization"`
 		} `json:"post_signing"`
+		PostEmptyBody struct {
+			APIKey        string `json:"api_key"`
+			APISecret     string `json:"api_secret"`
+			Timestamp     string `json:"timestamp"`
+			Method        string `json:"method"`
+			Path          string `json:"path"`
+			Query         string `json:"query"`
+			Body          string `json:"body"`
+			Authorization string `json:"authorization"`
+		} `json:"post_empty_body_signing"`
 		Get struct {
 			APIKey    string `json:"api_key"`
 			APISecret string `json:"api_secret"`
@@ -72,6 +82,12 @@ func TestConformanceSigning(t *testing.T) {
 	got := AuthorizationHeader(v.APIKey, v.APISecret, v.Timestamp, v.Method, v.Path, v.Query, []byte(v.Body))
 	if got != v.Authorization {
 		t.Fatalf("authorization mismatch: %s", got)
+	}
+	// An absent body signs an EMPTY last segment, never sha256(""). This vector is a POST, so an
+	// SDK that shortcuts on the method ("only GET is empty") fails here.
+	e := value.Vectors.PostEmptyBody
+	if got := AuthorizationHeader(e.APIKey, e.APISecret, e.Timestamp, e.Method, e.Path, e.Query, []byte(e.Body)); got != e.Authorization {
+		t.Fatalf("empty-body authorization mismatch: %s", got)
 	}
 	g := value.Vectors.Get
 	if Sign(g.APISecret, StringToSign(g.Timestamp, g.Method, g.Path, g.Query, []byte(g.Body))) != g.Signature {
@@ -118,8 +134,11 @@ func TestCompleteResourceRoutes(t *testing.T) {
 		if strings.Contains(r.URL.Path, "balances") {
 			body = "[]"
 		}
-		if r.Method == "GET" && (r.URL.Path == "/v1/invoices" || r.URL.Path == "/v1/withdrawals") {
+		if r.Method == "GET" && (r.URL.Path == "/v1/invoices" || r.URL.Path == "/v1/withdrawals" || r.URL.Path == "/v1/payment-channels") {
 			body = "{\"items\":[],\"next_cursor\":null}"
+		}
+		if r.Method == "GET" && r.URL.Path == "/v1/payment-channel-deposits" {
+			body = "{\"items\":[],\"next_cursor\":\"cur_1\"}"
 		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 	})
@@ -140,6 +159,14 @@ func TestCompleteResourceRoutes(t *testing.T) {
 	client.Withdrawals.List(ctx, WithdrawalListParams{Limit: 1})
 	client.Withdrawals.Cancel(ctx, "wdr_1", "reason")
 	client.Withdrawals.SimulateCompletion(ctx, "wdr_1")
+	client.PaymentChannels.Create(ctx, CreatePaymentChannelParams{})
+	client.PaymentChannels.Get(ctx, "pc_1")
+	client.PaymentChannels.List(ctx, PaymentChannelListParams{Limit: 1})
+	client.PaymentChannels.Block(ctx, "pc_1")
+	client.PaymentChannels.Unblock(ctx, "pc_1")
+	client.PaymentChannels.SimulateDeposit(ctx, "pc_1", SimulateDepositParams{Amount: "1.00", Currency: "USDT", Network: "TRC20"})
+	client.PaymentChannelDeposits.Read(ctx, PaymentChannelDepositFeedParams{Limit: 1})
+	client.PaymentChannelDeposits.Get(ctx, "pcd_1")
 	client.Balances.Get(ctx)
 	expected := []string{
 		"GET /v1/time",
@@ -154,6 +181,14 @@ func TestCompleteResourceRoutes(t *testing.T) {
 		"GET /v1/withdrawals?limit=1",
 		"POST /v1/withdrawals/wdr_1/cancel",
 		"POST /v1/sandbox/withdrawals/wdr_1/simulate-completion",
+		"POST /v1/payment-channels",
+		"GET /v1/payment-channels/pc_1",
+		"GET /v1/payment-channels?limit=1",
+		"POST /v1/payment-channels/pc_1/block",
+		"POST /v1/payment-channels/pc_1/unblock",
+		"POST /v1/sandbox/payment-channels/pc_1/simulate-deposit",
+		"GET /v1/payment-channel-deposits?limit=1",
+		"GET /v1/payment-channel-deposits/pcd_1",
 		"GET /v1/balances",
 	}
 	if !reflect.DeepEqual(expected, calls) {
