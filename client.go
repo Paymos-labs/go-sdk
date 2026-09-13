@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,18 @@ func WithBaseURL(value string) Option {
 		value = strings.TrimRight(value, "/")
 		if value == "" {
 			return errors.New("base URL is required")
+		}
+		// The API secret signs every request, so the scheme here decides whether that credential
+		// is readable in transit. HTTPS in production; plain HTTP only against a loopback host,
+		// which is what a local integration test points at. Mirrors the Rust SDK's rule.
+		parsed, err := url.Parse(value)
+		if err != nil {
+			return fmt.Errorf("base URL is invalid: %w", err)
+		}
+		host := strings.ToLower(parsed.Hostname())
+		loopback := host == "localhost" || host == "127.0.0.1" || host == "::1"
+		if parsed.Scheme != "https" && !(parsed.Scheme == "http" && loopback) {
+			return errors.New("base URL must use HTTPS (HTTP is allowed only for loopback tests)")
 		}
 		c.baseURL = value
 		return nil

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-09-13
+
+- fix(sdk-conformance): восемь копий контракта разошлись с каноном — 403 снова permission
+- fix(sdk): HTTPS обязателен, а 403 перестал притворяться ошибкой ключа
+
+- **403 is no longer reported as an authentication failure.** `(*APIError).Kind()` returns `"permission"` for 403; 401 keeps `"authentication"`. Same type, different category — code that switches on the category string must be updated.
+- **Base URL must use HTTPS.** Plain HTTP is accepted only against a loopback host, which is what a local integration test points at. The API secret signs every request, so a plaintext base URL put that credential on the wire.
+
 ## [2.2.0] - 2026-08-28
 
 - release: the changelog rot had a cause, and it was not the one I named
