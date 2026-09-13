@@ -50,8 +50,15 @@ func (e *APIError) Kind() string {
 	switch e.Status {
 	case 400:
 		return "validation"
-	case 401, 403:
+	case 401:
 		return "authentication"
+	// 403 is its own category: the credential was accepted and something else refused. It carries
+	// wrong-key-type (payout_key_required, payment_key_required, forbidden) next to plain business state
+	// (whitelist_required, merchant_suspended, widget_inactive). Reporting an unwhitelisted payout
+	// address as "authentication" sends the on-call engineer to rotate perfectly good credentials.
+	// Switch on Code() for the specific remedy.
+	case 403:
+		return "permission"
 	case 404:
 		return "not_found"
 	case 409:
