@@ -216,7 +216,7 @@ func (s *InvoicesService) ConfirmPayment(ctx context.Context, id, currency, netw
 }
 func (s *InvoicesService) SimulatePayment(ctx context.Context, id, stage string) (Invoice, error) {
 	switch stage {
-	case "paid", "overpaid", "underpay", "cancel":
+	case "paid", "overpaid", "underpay", "cancel", "paid_late":
 	default:
 		return Invoice{}, errors.New("invalid simulation stage")
 	}
