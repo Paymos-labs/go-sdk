@@ -127,6 +127,10 @@ type Invoice struct {
 	UpdatedAt   int64         `json:"updated_at"`
 	ExpiresAt   *int64        `json:"expires_at,omitempty"`
 	CompletedAt *int64        `json:"completed_at,omitempty"`
+	// PaidLateAt is the invoice-late-payment fact: money crossed the invoice's total after it had
+	// already closed as expired/underpaid. Unix seconds; nil while the invoice has
+	// no late mark — the server omits the field then. Status keeps its terminal meaning — this marker travels beside it.
+	PaidLateAt *int64 `json:"paid_late_at,omitempty"`
 }
 
 type InvoiceListItem struct {
@@ -143,6 +147,8 @@ type InvoiceListItem struct {
 	CreatedAt       int64         `json:"created_at"`
 	ExpiresAt       *int64        `json:"expires_at,omitempty"`
 	CompletedAt     *int64        `json:"completed_at,omitempty"`
+	// PaidLateAt: additive invoice-late-payment mark, Unix seconds; nil while there is no mark (field omitted).
+	PaidLateAt *int64 `json:"paid_late_at,omitempty"`
 }
 
 type CreateWithdrawalParams struct {
