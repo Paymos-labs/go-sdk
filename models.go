@@ -192,6 +192,33 @@ type Page[T any] struct {
 	NextCursor *string `json:"next_cursor"`
 }
 
+type RefundMode string
+
+const (
+	RefundFull        RefundMode = "full"
+	RefundOverpayment RefundMode = "overpayment"
+)
+
+// Refund is a server-calculated response, separate from the Create arguments.
+type Refund struct {
+	Withdrawal
+	InvoiceID   string     `json:"invoice_id"`
+	Mode        RefundMode `json:"mode"`
+	FirstSender string     `json:"first_sender"`
+	Type        *string    `json:"type,omitempty"`
+	ProjectID   *string    `json:"project_id,omitempty"`
+}
+
+type RefundListParams struct {
+	Limit     int                `json:"limit,omitempty"`
+	Cursor    *string            `json:"cursor,omitempty"`
+	InvoiceID *string            `json:"invoice_id,omitempty"`
+	Status    []WithdrawalStatus `json:"status,omitempty"`
+	// CreatedFrom and CreatedTo are RFC 3339 timestamps.
+	CreatedFrom *string `json:"created_from,omitempty"`
+	CreatedTo   *string `json:"created_to,omitempty"`
+}
+
 // CreatePaymentChannelParams is the whole of channel creation. The pair is the idempotency key:
 // repeating it answers 200 with the channel that already exists instead of 201 with a duplicate.
 type CreatePaymentChannelParams struct {
