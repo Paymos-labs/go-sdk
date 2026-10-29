@@ -72,6 +72,7 @@ type Client struct {
 	clock                      func() time.Time
 	Invoices                   *InvoicesService
 	Withdrawals                *WithdrawalsService
+	Refunds                    *RefundsService
 	PaymentChannels            *PaymentChannelsService
 	PaymentChannelDeposits     *PaymentChannelDepositsService
 	Balances                   *BalancesService
@@ -90,6 +91,7 @@ func NewClient(apiKey, apiSecret string, options ...Option) (*Client, error) {
 	}
 	c.Invoices = &InvoicesService{c}
 	c.Withdrawals = &WithdrawalsService{c}
+	c.Refunds = &RefundsService{c}
 	c.PaymentChannels = &PaymentChannelsService{c}
 	c.PaymentChannelDeposits = &PaymentChannelDepositsService{c}
 	c.Balances = &BalancesService{c}
@@ -250,6 +252,37 @@ func (s *WithdrawalsService) SimulateCompletion(ctx context.Context, id string) 
 	return object[Withdrawal](ctx, s.client, "POST", "/v1/sandbox/withdrawals/"+EncodePathSegment(id)+"/simulate-completion", "", nil)
 }
 
+type RefundsService struct{ client *Client }
+
+// Create uses a caller-owned idempotency key; amounts and the recipient come from the server.
+func (s *RefundsService) Create(ctx context.Context, invoiceID string, mode RefundMode, externalOrderID string) (Refund, error) {
+	switch mode {
+	case RefundFull, RefundOverpayment:
+	default:
+		return Refund{}, errors.New("invalid refund mode")
+	}
+	return object[Refund](ctx, s.client, "POST", "/v1/refunds", "", map[string]string{
+		"invoice_id": invoiceID, "mode": string(mode), "external_order_id": externalOrderID,
+	})
+}
+
+// Simulate sets a sandbox refund to the requested terminal status.
+func (s *RefundsService) Simulate(ctx context.Context, id string, status string) (Refund, error) {
+	return object[Refund](ctx, s.client, "POST", "/v1/sandbox/refunds/"+EncodePathSegment(id)+"/simulate", "", map[string]string{"status": status})
+}
+func (s *RefundsService) Get(ctx context.Context, id string) (Refund, error) {
+	return object[Refund](ctx, s.client, "GET", "/v1/refunds/"+EncodePathSegment(id), "", nil)
+}
+func (s *RefundsService) List(ctx context.Context, filters RefundListParams) (Page[Refund], error) {
+	query, err := BuildQuery(filters)
+	if err != nil {
+		return Page[Refund]{}, err
+	}
+	var value Page[Refund]
+	err = s.client.request(ctx, "GET", "/v1/refunds", query, nil, &value)
+	return value, err
+}
+
 type PaymentChannelsService struct{ client *Client }
 
 // Create makes a channel for a payer — or hands back the one that already exists. The pair
@@ -358,6 +391,12 @@ func NewWithdrawalIterator(service *WithdrawalsService, filters WithdrawalListPa
 	return newIterator(service.List, filters, maxPages,
 		func(value WithdrawalListParams) *string { return value.Cursor },
 		func(value *WithdrawalListParams, cursor string) { value.Cursor = &cursor },
+	)
+}
+func NewRefundIterator(service *RefundsService, filters RefundListParams, maxPages int) *Iterator[Refund, RefundListParams] {
+	return newIterator(service.List, filters, maxPages,
+		func(value RefundListParams) *string { return value.Cursor },
+		func(value *RefundListParams, cursor string) { value.Cursor = &cursor },
 	)
 }
 

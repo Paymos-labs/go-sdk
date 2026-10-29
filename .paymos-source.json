@@ -1,6 +1,6 @@
 {
   "source_repository": "shockk73/paymos",
   "source_path": "plugins/go-sdk",
-  "source_commit": "48e6c72ba0fec23a1ae729ede0737e00a537ff45",
-  "version": "2.3.0"
+  "source_commit": "8d7414a6a6b0a97c5e5d4d776c65051c24191647",
+  "version": "2.4.0"
 }
