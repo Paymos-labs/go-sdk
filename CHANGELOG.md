@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-11-01
+
+- refactor(invoices): remove the multiple-payment toggle
+
+- **403 is no longer reported as an authentication failure.** `(*APIError).Kind()` returns `"permission"` for 403; 401 keeps `"authentication"`. Same type, different category — code that switches on the category string must be updated.
+- **Base URL must use HTTPS.** Plain HTTP is accepted only against a loopback host, which is what a local integration test points at. The API secret signs every request, so a plaintext base URL put that credential on the wire.
+
 ## [2.4.0] - 2026-10-29
 
 - fix(sdk): preserve current refund contracts in TON conformance
