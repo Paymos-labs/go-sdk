@@ -60,14 +60,13 @@ const (
 )
 
 type CreateInvoiceParams struct {
-	ProjectID             string  `json:"project_id"`
-	Amount                string  `json:"amount"`
-	Currency              string  `json:"currency"`
-	ExternalOrderID       string  `json:"external_order_id"`
-	Network               *string `json:"network,omitempty"`
-	AllowMultiplePayments *bool   `json:"allow_multiple_payments,omitempty"`
-	CustomerFeePercent    *int    `json:"customer_fee_percent,omitempty"`
-	ClientID              *string `json:"client_id,omitempty"`
+	ProjectID          string  `json:"project_id"`
+	Amount             string  `json:"amount"`
+	Currency           string  `json:"currency"`
+	ExternalOrderID    string  `json:"external_order_id"`
+	Network            *string `json:"network,omitempty"`
+	CustomerFeePercent *int    `json:"customer_fee_percent,omitempty"`
+	ClientID           *string `json:"client_id,omitempty"`
 }
 
 type InvoiceListParams struct {
