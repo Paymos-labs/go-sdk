@@ -36,7 +36,7 @@ const depositJSON = `{"id":"pcd_1","payment_channel_id":"pc_1","project_id":"prj
 func stubClient(t *testing.T, handler func(*http.Request) (*http.Response, error)) *Client {
 	t.Helper()
 	client, err := NewClient("pk_test_key", "sk_test_secret",
-		agentWithOwnedHTTPClient(roundTripper(handler)),
+		WithHTTPClient(roundTripper(handler)),
 		WithRetry(0, 0),
 		WithClock(func() time.Time { return time.Unix(1700000000, 0) }))
 	if err != nil {
