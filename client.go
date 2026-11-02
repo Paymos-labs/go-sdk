@@ -83,8 +83,7 @@ func NewClient(apiKey, apiSecret string, options ...Option) (*Client, error) {
 	if strings.TrimSpace(apiKey) == "" || strings.TrimSpace(apiSecret) == "" {
 		return nil, errors.New("api key and secret are required")
 	}
-	ownedHTTP := &http.Client{Timeout: 30 * time.Second}
-	c := &Client{apiKey: apiKey, apiSecret: apiSecret, baseURL: "https://api.paymos.io", http: ownedHTTP, maxRetries: 2, baseDelay: 150 * time.Millisecond, clock: time.Now}
+	c := &Client{apiKey: apiKey, apiSecret: apiSecret, baseURL: "https://api.paymos.io", http: &http.Client{Timeout: 30 * time.Second}, maxRetries: 2, baseDelay: 150 * time.Millisecond, clock: time.Now}
 	for _, option := range options {
 		if err := option(c); err != nil {
 			return nil, err
@@ -101,9 +100,6 @@ func NewClient(apiKey, apiSecret string, options ...Option) (*Client, error) {
 }
 
 func (c *Client) request(ctx context.Context, method, path, query string, payload any, target any) error {
-	if method == http.MethodPost && path == "/v1/refunds" {
-		return errors.New("refund creation is disabled: transport safety is not verified")
-	}
 	var body []byte
 	var err error
 	if payload != nil {
@@ -112,9 +108,7 @@ func (c *Client) request(ctx context.Context, method, path, query string, payloa
 			return err
 		}
 	}
-	maxRetries := c.maxRetries
-	doer := c.http
-	for attempt := 0; attempt <= maxRetries; attempt++ {
+	for attempt := 0; attempt <= c.maxRetries; attempt++ {
 		timestamp := strconv.FormatInt(c.clock().Unix(), 10)
 		req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path+query, bytes.NewReader(body))
 		if err != nil {
@@ -125,9 +119,9 @@ func (c *Client) request(ctx context.Context, method, path, query string, payloa
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("User-Agent", "paymos-go/"+Version)
-		response, doErr := doer.Do(req)
+		response, doErr := c.http.Do(req)
 		if doErr != nil {
-			if attempt < maxRetries && isSafe(method) {
+			if attempt < c.maxRetries && isSafe(method) {
 				if err = wait(ctx, c.baseDelay<<attempt); err != nil {
 					return err
 				}
@@ -140,7 +134,7 @@ func (c *Client) request(ctx context.Context, method, path, query string, payloa
 		if readErr != nil {
 			return readErr
 		}
-		if attempt < maxRetries && (response.StatusCode == 429 || (response.StatusCode >= 500 && isSafe(method))) {
+		if attempt < c.maxRetries && (response.StatusCode == 429 || (response.StatusCode >= 500 && isSafe(method))) {
 			delay := c.baseDelay << attempt
 			if parsed, ok := parseRetryAfter(response.Header.Get("Retry-After")); ok && parsed > delay {
 				delay = parsed
@@ -279,7 +273,6 @@ func (s *RefundsService) Create(ctx context.Context, invoiceID string, mode Refu
 		"invoice_id": invoiceID, "mode": string(mode), "external_order_id": externalOrderID,
 	})
 }
-
 func (s *RefundsService) Get(ctx context.Context, id string) (Refund, error) {
 	return object[Refund](ctx, s.client, "GET", "/v1/refunds/"+EncodePathSegment(id), "", nil)
 }

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-02
+
+- feat(refunds): finalize clean merchant refunds spec, SDKs, CMS plugins, and targeted test scripts
+
+- **403 is no longer reported as an authentication failure.** `(*APIError).Kind()` returns `"permission"` for 403; 401 keeps `"authentication"`. Same type, different category — code that switches on the category string must be updated.
+- **Base URL must use HTTPS.** Plain HTTP is accepted only against a loopback host, which is what a local integration test points at. The API secret signs every request, so a plaintext base URL put that credential on the wire.
+
 ## [2.4.2] - 2026-11-02
 
 - wip: snapshot shared working tree before merging main
