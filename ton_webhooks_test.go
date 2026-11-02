@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestSignedTonWebhookRawAndFriendlyV1PreserveFields(t *testing.T) {
+func TestSignedTonWebhookVersionsPreserveFields(t *testing.T) {
 	raw, err := os.ReadFile("conformance/contract.json")
 	if err != nil {
 		t.Fatal(err)
@@ -36,8 +36,23 @@ func TestSignedTonWebhookRawAndFriendlyV1PreserveFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixtures := contract.Vectors.TonWebhooks
-	if len(fixtures.Vectors) != 8 {
-		t.Fatalf("expected 8 signed raw and friendly schema 1 vectors, got %d", len(fixtures.Vectors))
+	want := map[string]bool{
+		"invoice_raw": true, "withdrawal_raw": true, "refund_raw": true, "channel_deposit_raw": true,
+		"invoice_friendly": true, "withdrawal_friendly": true, "refund_friendly": true, "channel_deposit_friendly": true,
+		"invoice_v1": true, "withdrawal_v1": true, "refund_v1": true, "channel_deposit_v1": true,
+		"invoice_v2": true, "withdrawal_v2": true, "refund_v2": true, "channel_deposit_v2": true,
+	}
+	if len(fixtures.Vectors) != len(want) {
+		t.Fatalf("expected all 16 signed vectors, got %d", len(fixtures.Vectors))
+	}
+	for _, vector := range fixtures.Vectors {
+		if !want[vector.Name] {
+			t.Fatalf("unexpected or duplicate signed vector: %s", vector.Name)
+		}
+		delete(want, vector.Name)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing signed vectors: %v", want)
 	}
 	verifier, err := NewWebhookVerifier(fixtures.Secret, 5*time.Minute)
 	if err != nil {
@@ -45,9 +60,6 @@ func TestSignedTonWebhookRawAndFriendlyV1PreserveFields(t *testing.T) {
 	}
 	for _, vector := range fixtures.Vectors {
 		t.Run(vector.Name, func(t *testing.T) {
-			if vector.Version != 1 {
-				t.Fatalf("unexpected payload version: %d", vector.Version)
-			}
 			var event WebhookEvent[map[string]any]
 			now := time.Unix(fixtures.Now, 0)
 			if err := verifier.ConstructEvent(vector.Header, []byte(vector.RawBody), now, &event); err != nil {

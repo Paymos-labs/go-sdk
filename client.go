@@ -83,7 +83,8 @@ func NewClient(apiKey, apiSecret string, options ...Option) (*Client, error) {
 	if strings.TrimSpace(apiKey) == "" || strings.TrimSpace(apiSecret) == "" {
 		return nil, errors.New("api key and secret are required")
 	}
-	c := &Client{apiKey: apiKey, apiSecret: apiSecret, baseURL: "https://api.paymos.io", http: &http.Client{Timeout: 30 * time.Second}, maxRetries: 2, baseDelay: 150 * time.Millisecond, clock: time.Now}
+	ownedHTTP := &http.Client{Timeout: 30 * time.Second}
+	c := &Client{apiKey: apiKey, apiSecret: apiSecret, baseURL: "https://api.paymos.io", http: ownedHTTP, maxRetries: 2, baseDelay: 150 * time.Millisecond, clock: time.Now}
 	for _, option := range options {
 		if err := option(c); err != nil {
 			return nil, err
@@ -100,6 +101,9 @@ func NewClient(apiKey, apiSecret string, options ...Option) (*Client, error) {
 }
 
 func (c *Client) request(ctx context.Context, method, path, query string, payload any, target any) error {
+	if method == http.MethodPost && path == "/v1/refunds" {
+		return errors.New("refund creation is disabled: transport safety is not verified")
+	}
 	var body []byte
 	var err error
 	if payload != nil {
@@ -108,7 +112,9 @@ func (c *Client) request(ctx context.Context, method, path, query string, payloa
 			return err
 		}
 	}
-	for attempt := 0; attempt <= c.maxRetries; attempt++ {
+	maxRetries := c.maxRetries
+	doer := c.http
+	for attempt := 0; attempt <= maxRetries; attempt++ {
 		timestamp := strconv.FormatInt(c.clock().Unix(), 10)
 		req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path+query, bytes.NewReader(body))
 		if err != nil {
@@ -119,9 +125,9 @@ func (c *Client) request(ctx context.Context, method, path, query string, payloa
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("User-Agent", "paymos-go/"+Version)
-		response, doErr := c.http.Do(req)
+		response, doErr := doer.Do(req)
 		if doErr != nil {
-			if attempt < c.maxRetries && isSafe(method) {
+			if attempt < maxRetries && isSafe(method) {
 				if err = wait(ctx, c.baseDelay<<attempt); err != nil {
 					return err
 				}
@@ -134,7 +140,7 @@ func (c *Client) request(ctx context.Context, method, path, query string, payloa
 		if readErr != nil {
 			return readErr
 		}
-		if attempt < c.maxRetries && (response.StatusCode == 429 || (response.StatusCode >= 500 && isSafe(method))) {
+		if attempt < maxRetries && (response.StatusCode == 429 || (response.StatusCode >= 500 && isSafe(method))) {
 			delay := c.baseDelay << attempt
 			if parsed, ok := parseRetryAfter(response.Header.Get("Retry-After")); ok && parsed > delay {
 				delay = parsed
@@ -254,6 +260,14 @@ func (s *WithdrawalsService) SimulateCompletion(ctx context.Context, id string) 
 
 type RefundsService struct{ client *Client }
 
+// Simulate sets a terminal Sandbox refund status using the scoped Payment credential.
+func (s *RefundsService) Simulate(ctx context.Context, id, status string) (Refund, error) {
+	if strings.TrimSpace(id) == "" || (status != "completed" && status != "failed" && status != "cancelled") {
+		return Refund{}, errors.New("a refund ID and terminal simulation status are required")
+	}
+	return object[Refund](ctx, s.client, "POST", "/v1/sandbox/refunds/"+EncodePathSegment(id)+"/simulate", "", map[string]string{"status": status})
+}
+
 // Create uses a caller-owned idempotency key; amounts and the recipient come from the server.
 func (s *RefundsService) Create(ctx context.Context, invoiceID string, mode RefundMode, externalOrderID string) (Refund, error) {
 	switch mode {
@@ -266,10 +280,6 @@ func (s *RefundsService) Create(ctx context.Context, invoiceID string, mode Refu
 	})
 }
 
-// Simulate sets a sandbox refund to the requested terminal status.
-func (s *RefundsService) Simulate(ctx context.Context, id string, status string) (Refund, error) {
-	return object[Refund](ctx, s.client, "POST", "/v1/sandbox/refunds/"+EncodePathSegment(id)+"/simulate", "", map[string]string{"status": status})
-}
 func (s *RefundsService) Get(ctx context.Context, id string) (Refund, error) {
 	return object[Refund](ctx, s.client, "GET", "/v1/refunds/"+EncodePathSegment(id), "", nil)
 }
