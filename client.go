@@ -269,9 +269,19 @@ func (s *RefundsService) Create(ctx context.Context, invoiceID string, mode Refu
 	default:
 		return Refund{}, errors.New("invalid refund mode")
 	}
-	return object[Refund](ctx, s.client, "POST", "/v1/refunds", "", map[string]string{
+	refund, err := object[Refund](ctx, s.client, "POST", "/v1/refunds", "", map[string]string{
 		"invoice_id": invoiceID, "mode": string(mode), "external_order_id": externalOrderID,
 	})
+	if err != nil {
+		return refund, err
+	}
+	// The server always answers create and replay with a refund that has an ID. A 2xx without
+	// one (empty body, "{}") does not say whether the refund exists, so it is not a success.
+	if strings.TrimSpace(refund.WithdrawalID) == "" {
+		return Refund{}, errors.New("Paymos refund response has no withdrawal_id; the outcome is unknown, " +
+			"call Create again with the same external_order_id")
+	}
+	return refund, nil
 }
 func (s *RefundsService) Get(ctx context.Context, id string) (Refund, error) {
 	return object[Refund](ctx, s.client, "GET", "/v1/refunds/"+EncodePathSegment(id), "", nil)

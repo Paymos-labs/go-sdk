@@ -42,7 +42,7 @@ feed, err := client.PaymentChannelDeposits.Read(ctx, paymos.PaymentChannelDeposi
 	Limit:  100,
 })
 for _, deposit := range feed.Items {
-	credit(deposit)
+	creditDeposit(ctx, deposit) // one credit per deposit.ID, see below
 }
 saveCursor(feed.NextCursor)
 ```
@@ -77,7 +77,51 @@ var event paymos.WebhookEvent[paymos.PaymentChannelDeposit]
 if err := verifier.ConstructEvent(signatureHeader, rawBody, time.Now(), &event); err != nil {
     // Return 401 without processing the payload.
 }
+if event.EventType == "payment_channel.deposit.confirmed" && event.Data.IsFinal {
+    creditDeposit(ctx, event.Data) // once per event.Data.ID, shared with the feed
+}
 ```
+
+The feed and the deposit webhook report the same deposits, so both go through one
+`creditDeposit` keyed by the deposit's own `ID` (`pcd_...`). A sketch with
+`database/sql` (`credited_deposits.deposit_id` is the primary key; PostgreSQL syntax):
+
+```go
+func creditDeposit(ctx context.Context, deposit paymos.PaymentChannelDeposit) error {
+	if !deposit.IsFinal || deposit.ProjectID != myProjectID || deposit.IsTest != myIsTest {
+		return nil
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // no-op after Commit
+	// The insert and the balance update commit together or not at all. A second
+	// delivery, a second endpoint's copy, or a re-read feed page inserts nothing.
+	result, err := tx.ExecContext(ctx,
+		`INSERT INTO credited_deposits (deposit_id, payer, amount) VALUES ($1, $2, $3::numeric)
+		 ON CONFLICT (deposit_id) DO NOTHING`,
+		deposit.ID, deposit.PaymentChannelExternalID, deposit.Net)
+	if err != nil {
+		return err
+	}
+	if inserted, _ := result.RowsAffected(); inserted == 1 {
+		if _, err = tx.ExecContext(ctx,
+			`UPDATE balances SET amount = amount + $1::numeric WHERE payer = $2`,
+			deposit.Net, deposit.PaymentChannelExternalID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+```
+
+`EventID` identifies one delivery, not one payment. Paymos creates a separate event,
+with its own `EventID`, for every webhook endpoint subscribed to the event, and every
+later event about the same invoice or deposit has its own `EventID` too. Store
+`EventID` to skip a redelivered request, but key money and fulfilment on the business
+identity: the invoice/order for invoice events, the deposit `ID` for deposit events.
+Write that key in the same database transaction as the order or balance change.
 
 `confirming` and `reorged` are advisory and may arrive out of order — a
 `confirming` can land after the `confirmed` for the same deposit, and a

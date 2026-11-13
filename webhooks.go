@@ -15,6 +15,10 @@ import (
 var ErrWebhookSignature = errors.New("Paymos webhook signature mismatch")
 var ErrWebhookTimestamp = errors.New("Paymos webhook timestamp outside tolerance")
 
+// ErrWebhookNotConfigured is returned by a verifier that was not built by NewWebhookVerifier
+// (a nil pointer or a zero-value WebhookVerifier): it has no secret to check a signature with.
+var ErrWebhookNotConfigured = errors.New("Paymos webhook verifier has no secret; create it with NewWebhookVerifier")
+
 type WebhookVerifier struct {
 	secret    []byte
 	tolerance time.Duration
@@ -30,6 +34,9 @@ func NewWebhookVerifier(secret string, tolerance time.Duration) (*WebhookVerifie
 	return &WebhookVerifier{secret: []byte(secret), tolerance: tolerance}, nil
 }
 func (v *WebhookVerifier) Verify(header string, body []byte, now time.Time) error {
+	if v == nil || len(v.secret) == 0 {
+		return ErrWebhookNotConfigured
+	}
 	timestamp, signatures, err := parseWebhookHeader(header)
 	if err != nil {
 		return err

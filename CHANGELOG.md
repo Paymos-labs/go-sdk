@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-11-13
+
+- fix(plugins,publicweb): SDK webhook credit recipes, CMS recovery, redirects and CSP logs (audit 2026-11-13)
+- docs(sdk): backfill published mirror changelogs across SDKs and MCP
+
 ## [2.5.0] - 2026-11-02
 
 - feat(refunds): finalize clean merchant refunds spec, SDKs, CMS plugins, and targeted test scripts

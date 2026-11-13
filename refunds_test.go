@@ -418,6 +418,27 @@ func TestRefundUnknownOutcomeReplaysSameKey(t *testing.T) {
 	}
 }
 
+// A 2xx without a refund ID does not show whether the refund exists. It must reach the caller as
+// an error after one request, so the caller replays the same key instead of recording a success.
+func TestRefundCreateWithoutIDIsAnUnknownOutcome(t *testing.T) {
+	v := refundContract(t)
+	for _, body := range []string{"", "{}", "null", `{"withdrawal_id":"  "}`, `{"withdrawal_id":null}`} {
+		t.Run(body, func(t *testing.T) {
+			calls := 0
+			client := stubClient(t, func(r *http.Request) (*http.Response, error) {
+				assertRefundRequest(t, r, v.Create.Method, v.Create.Path, v.Create.Body)
+				calls++
+				return jsonResponse(v.Create.NewStatus, body), nil
+			})
+			refund, err := client.Refunds.Create(context.Background(), v.Create.Body["invoice_id"],
+				RefundMode(v.Create.Body["mode"]), v.Create.Body["external_order_id"])
+			if err == nil || calls != 1 || !reflect.DeepEqual(refund, Refund{}) {
+				t.Fatalf("refund without an ID must be an error after one request: %#v %v (%d requests)", refund, err, calls)
+			}
+		})
+	}
+}
+
 func TestRefundValidationKeepsTopLevelProblemAndFieldErrors(t *testing.T) {
 	client := stubClient(t, func(*http.Request) (*http.Response, error) {
 		return jsonResponse(400, `{"type":"about:blank","title":"Bad Request","status":400,"detail":"Invalid request.","code":"validation_failed","errors":[{"code":"field_required","field":"invoice_id","message":"Required."},{"code":"field_required","field":"external_order_id","message":"Required."}]}`), nil

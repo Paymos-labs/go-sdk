@@ -2,7 +2,11 @@ package paymos
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -106,6 +110,31 @@ func TestConformanceWebhook(t *testing.T) {
 	}
 	if err = verifier.Verify(v.Header, []byte(v.RawBody), time.Unix(v.Now, 0)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A verifier not built by NewWebhookVerifier has no secret. A body signed with the empty key at
+// the exact current second passes both the zero tolerance and the HMAC comparison, so the
+// verifier itself has to refuse before it compares anything.
+func TestZeroValueWebhookVerifierRejectsUnconfiguredSecret(t *testing.T) {
+	body := []byte(`{"event_id":"evt_1","event_type":"invoice.paid","version":1,"occurred_at":1700000000,"data":{}}`)
+	mac := hmac.New(sha256.New, nil)
+	_, _ = mac.Write([]byte("1700000000."))
+	_, _ = mac.Write(body)
+	header := "t=1700000000,v1=" + hex.EncodeToString(mac.Sum(nil))
+	now := time.Unix(1700000000, 0)
+
+	var zero WebhookVerifier
+	if err := zero.Verify(header, body, now); !errors.Is(err, ErrWebhookNotConfigured) {
+		t.Fatalf("zero-value verifier must refuse to verify: %v", err)
+	}
+	var event WebhookEvent[map[string]any]
+	if err := zero.ConstructEvent(header, body, now, &event); !errors.Is(err, ErrWebhookNotConfigured) {
+		t.Fatalf("zero-value verifier must refuse to construct an event: %v", err)
+	}
+	var missing *WebhookVerifier
+	if err := missing.Verify(header, body, now); !errors.Is(err, ErrWebhookNotConfigured) {
+		t.Fatalf("nil verifier must return an error instead of panicking: %v", err)
 	}
 }
 
