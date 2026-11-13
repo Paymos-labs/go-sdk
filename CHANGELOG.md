@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [2.5.3] - 2026-11-13
+
+- fix(go-sdk): format cancellation test before release
+- merge: integrate Windows WIP onto origin/main (CMS binding, SDK preview, dashboard, plugins, specs)
+
 ## [2.5.2] - 2026-11-13
 
 - fix(tests,sdk): planner tests follow the A13-01 reserve; Go SDK passes gofmt

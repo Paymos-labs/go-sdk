@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 type HTTPDoer interface {
@@ -394,7 +395,7 @@ func object[T any](ctx context.Context, c *Client, method, path, query string, p
 	return value, err
 }
 func validReason(reason string) error {
-	if strings.TrimSpace(reason) == "" || len(reason) > 500 {
+	if strings.TrimSpace(reason) == "" || len(utf16.Encode([]rune(reason))) > 500 {
 		return errors.New("cancellation reason must contain 1 to 500 characters")
 	}
 	return nil
