@@ -157,6 +157,23 @@ func (c *Client) request(ctx context.Context, method, path, query string, payloa
 	}
 	return errors.New("unreachable")
 }
+
+// withoutRedirects returns a view of the client whose default *http.Client answers a 3xx with the redirect itself
+// instead of following it. A refund create is a signed money request: followed, a 307/308 would resend it, body
+// and Authorization header, to wherever the Location points (audit 2026-11-13, D44-02). The 3xx surfaces as an
+// *APIError. A caller-supplied HTTPDoer keeps its own policy.
+func (c *Client) withoutRedirects() *Client {
+	hc, ok := c.http.(*http.Client)
+	if !ok {
+		return c
+	}
+	noRedirect := *hc
+	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	view := *c
+	view.http = &noRedirect
+	return &view
+}
+
 func isSafe(method string) bool {
 	switch strings.ToUpper(method) {
 	case "GET", "HEAD", "OPTIONS":
@@ -269,7 +286,7 @@ func (s *RefundsService) Create(ctx context.Context, invoiceID string, mode Refu
 	default:
 		return Refund{}, errors.New("invalid refund mode")
 	}
-	refund, err := object[Refund](ctx, s.client, "POST", "/v1/refunds", "", map[string]string{
+	refund, err := object[Refund](ctx, s.client.withoutRedirects(), "POST", "/v1/refunds", "", map[string]string{
 		"invoice_id": invoiceID, "mode": string(mode), "external_order_id": externalOrderID,
 	})
 	if err != nil {

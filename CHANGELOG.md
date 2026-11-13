@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [2.5.2] - 2026-11-13
+
+- fix(tests,sdk): planner tests follow the A13-01 reserve; Go SDK passes gofmt
+- fix(sdk): Go refunds do not follow redirects; Python timeout semantics documented
+
 ## [2.5.1] - 2026-11-13
 
 - fix(plugins,publicweb): SDK webhook credit recipes, CMS recovery, redirects and CSP logs (audit 2026-11-13)

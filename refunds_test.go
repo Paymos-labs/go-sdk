@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"reflect"
 	"strings"
@@ -461,5 +462,36 @@ func TestRefundInvalidModeDoesNotSendARequest(t *testing.T) {
 		if _, err := client.Refunds.Create(context.Background(), "inv_1", mode, "key"); err == nil {
 			t.Fatalf("invalid mode %q must fail", mode)
 		}
+	}
+}
+
+func TestRefundCreateDoesNotFollowARedirect(t *testing.T) {
+	// D44-02: a 307 must not resend the signed refund request to another host.
+	elsewhere := 0
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		elsewhere++
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, `{"withdrawal_id":"wdr_other"}`)
+	}))
+	defer other.Close()
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/v1/refunds", http.StatusTemporaryRedirect)
+	}))
+	defer api.Close()
+
+	client, err := NewClient("pk_test_x", "sk_test_y", WithBaseURL(api.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Refunds.Create(context.Background(), "inv_1", RefundFull, "order-1")
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusTemporaryRedirect {
+		t.Fatalf("expected the 307 as an APIError, got %v", err)
+	}
+	if elsewhere != 0 {
+		t.Fatalf("the refund request was resent to the redirect target %d time(s)", elsewhere)
+	}
+	if _, ok := client.http.(*http.Client); !ok || client.http.(*http.Client).CheckRedirect != nil {
+		t.Fatal("the shared client must keep its own redirect policy")
 	}
 }
