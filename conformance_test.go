@@ -21,6 +21,13 @@ type roundTripper func(*http.Request) (*http.Response, error)
 
 func (f roundTripper) Do(r *http.Request) (*http.Response, error) { return f(r) }
 
+type invoiceContractFixture struct {
+	Method   string          `json:"method"`
+	Path     string          `json:"path"`
+	Body     json.RawMessage `json:"body"`
+	Response json.RawMessage `json:"response"`
+}
+
 type contractValue struct {
 	Vectors struct {
 		Post struct {
@@ -65,6 +72,12 @@ type contractValue struct {
 			Flat  map[string]any `json:"flat"`
 			Multi map[string]any `json:"multi"`
 		} `json:"problem_details"`
+		Invoices struct {
+			CreateSingleProduct   invoiceContractFixture `json:"create_single_product"`
+			CreateMultiProduct    invoiceContractFixture `json:"create_multi_product"`
+			LegacyWithoutProducts invoiceContractFixture `json:"legacy_without_products"`
+			NullProducts          invoiceContractFixture `json:"null_products"`
+		} `json:"invoices"`
 	} `json:"vectors"`
 }
 
@@ -307,4 +320,175 @@ func TestTypedListQueryAndWebhookEnvelope(t *testing.T) {
 	if err = verifier.Verify(duplicateTimestamp, []byte(v.RawBody), time.Unix(v.Now, 0)); err == nil {
 		t.Fatal("duplicate webhook timestamp must be rejected")
 	}
+}
+
+func TestInvoiceProductsConformance(t *testing.T) {
+	fixtures := contract(t).Vectors.Invoices
+	strPtr := func(value string) *string { return &value }
+
+	runCreate := func(name string, fixture invoiceContractFixture, params CreateInvoiceParams) ([]byte, Invoice) {
+		t.Helper()
+		var capturedBody []byte
+		var capturedMethod, capturedPath string
+		transport := roundTripper(func(r *http.Request) (*http.Response, error) {
+			capturedMethod = r.Method
+			capturedPath = r.URL.Path
+			var err error
+			capturedBody, err = io.ReadAll(r.Body)
+			if err != nil {
+				return nil, err
+			}
+			return &http.Response{
+				StatusCode: 201,
+				Body:       io.NopCloser(strings.NewReader(string(fixture.Response))),
+				Header:     make(http.Header),
+			}, nil
+		})
+		client, err := NewClient(
+			"pk_test_key",
+			"sk_test_secret",
+			WithHTTPClient(transport),
+			WithRetry(0, 0),
+			WithClock(func() time.Time { return time.Unix(1700000000, 0) }),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		invoice, err := client.Invoices.Create(context.Background(), params)
+		if err != nil {
+			t.Fatalf("%s: Create failed: %v", name, err)
+		}
+		if capturedMethod != fixture.Method || capturedPath != fixture.Path {
+			t.Fatalf("%s: request route mismatch: got %s %s, want %s %s", name, capturedMethod, capturedPath, fixture.Method, fixture.Path)
+		}
+		var gotMap, wantMap map[string]any
+		if err := json.Unmarshal(capturedBody, &gotMap); err != nil {
+			t.Fatalf("%s: unmarshal captured body: %v", name, err)
+		}
+		if err := json.Unmarshal(fixture.Body, &wantMap); err != nil {
+			t.Fatalf("%s: unmarshal fixture body: %v", name, err)
+		}
+		if !reflect.DeepEqual(gotMap, wantMap) {
+			t.Fatalf("%s: request body mismatch:\n got %s\nwant %s", name, string(capturedBody), string(fixture.Body))
+		}
+		return capturedBody, invoice
+	}
+
+	t.Run("create single product", func(t *testing.T) {
+		_, invoice := runCreate("create_single_product", fixtures.CreateSingleProduct, CreateInvoiceParams{
+			ProjectID:       "prj_1",
+			Amount:          "47.00",
+			Currency:        "USD",
+			ExternalOrderID: "order-product-single",
+			Products: []InvoiceProduct{
+				{
+					Title:       "Studio Pro",
+					Description: strPtr("One-month access"),
+					ImageURL:    strPtr("https://shop.example/images/studio-pro.webp"),
+					Quantity:    2,
+					UnitAmount:  "24.50",
+				},
+			},
+		})
+		if invoice.InvoiceID != "inv_prod_1" || invoice.Order.Amount != "47.00" || invoice.Order.Currency != "USD" {
+			t.Fatalf("unexpected single-product invoice: %#v", invoice)
+		}
+		if len(invoice.Order.Products) != 1 {
+			t.Fatalf("expected 1 product, got %#v", invoice.Order.Products)
+		}
+		p := invoice.Order.Products[0]
+		if p.Title != "Studio Pro" || p.Quantity != 2 || p.UnitAmount != "24.50" ||
+			p.Description == nil || *p.Description != "One-month access" ||
+			p.ImageURL == nil || *p.ImageURL != "https://shop.example/images/studio-pro.webp" {
+			t.Fatalf("unexpected decoded product: %#v", p)
+		}
+	})
+
+	t.Run("create multi product with omitted optional fields", func(t *testing.T) {
+		rawBody, invoice := runCreate("create_multi_product", fixtures.CreateMultiProduct, CreateInvoiceParams{
+			ProjectID:       "prj_1",
+			Amount:          "59.00",
+			Currency:        "USD",
+			ExternalOrderID: "order-product-multi",
+			Products: []InvoiceProduct{
+				{
+					Title:       "Studio Pro",
+					Description: strPtr("One-month access"),
+					ImageURL:    strPtr("https://shop.example/images/studio-pro.webp"),
+					Quantity:    2,
+					UnitAmount:  "24.50",
+				},
+				{
+					Title:      "Priority Support",
+					Quantity:   1,
+					UnitAmount: "12.00",
+				},
+			},
+		})
+		var wire struct {
+			Products []map[string]any `json:"products"`
+		}
+		if err := json.Unmarshal(rawBody, &wire); err != nil {
+			t.Fatal(err)
+		}
+		if len(wire.Products) != 2 {
+			t.Fatalf("expected 2 wire products, got %d", len(wire.Products))
+		}
+		if _, hasDesc := wire.Products[1]["description"]; hasDesc {
+			t.Fatalf("expected omitted description on minimal product, got %#v", wire.Products[1])
+		}
+		if _, hasImg := wire.Products[1]["image_url"]; hasImg {
+			t.Fatalf("expected omitted image_url on minimal product, got %#v", wire.Products[1])
+		}
+		if len(invoice.Order.Products) != 2 {
+			t.Fatalf("expected 2 decoded products, got %#v", invoice.Order.Products)
+		}
+		second := invoice.Order.Products[1]
+		if second.Title != "Priority Support" || second.Quantity != 1 || second.UnitAmount != "12.00" ||
+			second.Description != nil || second.ImageURL != nil {
+			t.Fatalf("unexpected minimal decoded product: %#v", second)
+		}
+	})
+
+	t.Run("legacy without products", func(t *testing.T) {
+		rawBody, invoice := runCreate("legacy_without_products", fixtures.LegacyWithoutProducts, CreateInvoiceParams{
+			ProjectID:       "prj_1",
+			Amount:          "30.00",
+			Currency:        "USD",
+			ExternalOrderID: "order-legacy-1",
+		})
+		var wire map[string]any
+		if err := json.Unmarshal(rawBody, &wire); err != nil {
+			t.Fatal(err)
+		}
+		if _, hasProducts := wire["products"]; hasProducts {
+			t.Fatalf("legacy params must omit products key, got %s", string(rawBody))
+		}
+		if invoice.Order.Products != nil || invoice.Order.Amount != "30.00" {
+			t.Fatalf("unexpected legacy order: %#v", invoice.Order)
+		}
+	})
+
+	t.Run("null products response", func(t *testing.T) {
+		var fromFixture Invoice
+		if err := json.Unmarshal(fixtures.NullProducts.Response, &fromFixture); err != nil {
+			t.Fatal(err)
+		}
+		if fromFixture.Order.Products != nil {
+			t.Fatalf("expected nil order.products, got %#v", fromFixture.Order.Products)
+		}
+		explicitNull := strings.Replace(
+			string(fixtures.NullProducts.Response),
+			`"currency":"USD"`,
+			`"currency":"USD","products":null`,
+			1,
+		)
+		var fromExplicitNull Invoice
+		if err := json.Unmarshal([]byte(explicitNull), &fromExplicitNull); err != nil {
+			t.Fatal(err)
+		}
+		if fromExplicitNull.Order.Products != nil {
+			t.Fatalf("expected nil order.products for explicit null, got %#v", fromExplicitNull.Order.Products)
+		}
+	})
 }

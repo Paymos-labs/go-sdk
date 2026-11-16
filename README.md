@@ -13,11 +13,70 @@ go get github.com/Paymos-labs/go-sdk/v2@latest
 import paymos "github.com/Paymos-labs/go-sdk/v2"
 
 client, _ := paymos.NewClient("pk_test_...", "sk_test_...")
+
+// Compatible amount-only call (Products omitted / nil)
 invoice, err := client.Invoices.Create(ctx, paymos.CreateInvoiceParams{
-	ProjectID: "prj_...", Amount: "10.00", Currency: "USD",
+	ProjectID:       "prj_...",
+	Amount:          "10.00",
+	Currency:        "USD",
 	ExternalOrderID: "order_123",
 })
 ```
+
+### Product line items (`products[]`)
+
+Pass optional `Products` (`1..50` `paymos.InvoiceProduct` items) using keyed struct literals to display line items on checkout, or omit `Products` for a compatible `amount-only` invoice. Each item requires `Title` (<= 200 Unicode scalar values), positive int32 `Quantity`, and decimal string `UnitAmount`; `Description` (plain text, <= 2000 scalars) and `ImageURL` (HTTPS URL, <= 2048 scalars) are `*string` and omitted on the wire when `nil`.
+
+```go
+func strPtr(v string) *string { return &v }
+
+// 1-item invoice with optional Description and ImageURL
+singleInvoice, err := client.Invoices.Create(ctx, paymos.CreateInvoiceParams{
+	ProjectID:       "prj_...",
+	Amount:          "47.00",
+	Currency:        "USD",
+	ExternalOrderID: "order_product_single",
+	Products: []paymos.InvoiceProduct{
+		{
+			Title:       "Studio Pro",
+			Description: strPtr("One-month access"),
+			ImageURL:    strPtr("https://shop.example/images/studio-pro.webp"),
+			Quantity:    2,
+			UnitAmount:  "24.50",
+		},
+	},
+})
+
+// Multi-item cart including a minimal 3-field item (no Description / ImageURL)
+cartInvoice, err := client.Invoices.Create(ctx, paymos.CreateInvoiceParams{
+	ProjectID:       "prj_...",
+	Amount:          "59.00",
+	Currency:        "USD",
+	ExternalOrderID: "order_product_multi",
+	Products: []paymos.InvoiceProduct{
+		{
+			Title:       "Studio Pro",
+			Description: strPtr("One-month access"),
+			ImageURL:    strPtr("https://shop.example/images/studio-pro.webp"),
+			Quantity:    2,
+			UnitAmount:  "24.50",
+		},
+		{
+			Title:      "Priority Support",
+			Quantity:   1,
+			UnitAmount: "12.00",
+		},
+	},
+})
+
+for _, item := range cartInvoice.Order.Products {
+	fmt.Println(item.Title, item.Quantity, item.UnitAmount)
+}
+```
+
+- **Authoritative `Amount`:** `Amount` is the exact order total and is never recomputed from `sum(Quantity * UnitAmount)`.
+- **First-success replay:** the first successful `Create` freezes `Order.Products` on the invoice. Replaying the same `ExternalOrderID` with unchanged `(Amount, Currency, Network)` returns HTTP 200 with the original `Invoice` and `Order.Products`, even if `Products` changed; changing `(Amount, Currency, Network)` returns `*paymos.APIError` with status `409` (`invoice_idempotency_conflict`). Legacy or `amount-only` invoices return `Order.Products == nil`.
+- **Image/product fallback & webhooks:** invoice creation stores `ImageURL` without fetching it server-side; if the buyer's browser fails to load an image or an item omits `Description`/`ImageURL`, checkout hides only the missing media/description and keeps payment active. Signed invoice webhooks omit `products`.
 
 Use `NewInvoiceIterator` and `NewWithdrawalIterator` for bounded cursor
 traversal. Non-success responses return `*paymos.APIError`, which preserves the

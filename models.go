@@ -59,14 +59,23 @@ const (
 	SimulateDepositConfirmed  SimulateDepositStage = "confirmed"
 )
 
+type InvoiceProduct struct {
+	Title       string  `json:"title"`
+	Description *string `json:"description,omitempty"`
+	ImageURL    *string `json:"image_url,omitempty"`
+	Quantity    int     `json:"quantity"`
+	UnitAmount  string  `json:"unit_amount"`
+}
+
 type CreateInvoiceParams struct {
-	ProjectID          string  `json:"project_id"`
-	Amount             string  `json:"amount"`
-	Currency           string  `json:"currency"`
-	ExternalOrderID    string  `json:"external_order_id"`
-	Network            *string `json:"network,omitempty"`
-	CustomerFeePercent *int    `json:"customer_fee_percent,omitempty"`
-	ClientID           *string `json:"client_id,omitempty"`
+	ProjectID          string           `json:"project_id"`
+	Amount             string           `json:"amount"`
+	Currency           string           `json:"currency"`
+	ExternalOrderID    string           `json:"external_order_id"`
+	Network            *string          `json:"network,omitempty"`
+	CustomerFeePercent *int             `json:"customer_fee_percent,omitempty"`
+	ClientID           *string          `json:"client_id,omitempty"`
+	Products           []InvoiceProduct `json:"products,omitempty"`
 }
 
 type InvoiceListParams struct {
@@ -80,11 +89,12 @@ type InvoiceListParams struct {
 }
 
 type Order struct {
-	ExternalID string  `json:"external_id"`
-	ClientID   *string `json:"client_id,omitempty"`
-	Amount     string  `json:"amount"`
-	Currency   string  `json:"currency"`
-	Network    *string `json:"network,omitempty"`
+	ExternalID string           `json:"external_id"`
+	ClientID   *string          `json:"client_id,omitempty"`
+	Amount     string           `json:"amount"`
+	Currency   string           `json:"currency"`
+	Network    *string          `json:"network,omitempty"`
+	Products   []InvoiceProduct `json:"products,omitempty"`
 }
 
 type Transfer struct {

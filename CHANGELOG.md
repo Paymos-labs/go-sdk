@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-11-16
+
+- docs(sdk,drupal): document invoice products[] and update OpenAPI snapshot
+- feat(sdk): support invoice products in Go, .NET, and Java SDKs (7.3)
+- feat(sdk): add products wire conformance fixtures (7.1)
+
 ## [2.5.3] - 2026-11-13
 
 - fix(go-sdk): format cancellation test before release
