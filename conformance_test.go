@@ -384,7 +384,6 @@ func TestInvoiceProductsConformance(t *testing.T) {
 				{
 					Title:       "Studio Pro",
 					Description: strPtr("One-month access"),
-					ImageURL:    strPtr("https://shop.example/images/studio-pro.webp"),
 					Quantity:    2,
 					UnitAmount:  "24.50",
 				},
@@ -398,8 +397,7 @@ func TestInvoiceProductsConformance(t *testing.T) {
 		}
 		p := invoice.Order.Products[0]
 		if p.Title != "Studio Pro" || p.Quantity != 2 || p.UnitAmount != "24.50" ||
-			p.Description == nil || *p.Description != "One-month access" ||
-			p.ImageURL == nil || *p.ImageURL != "https://shop.example/images/studio-pro.webp" {
+			p.Description == nil || *p.Description != "One-month access" {
 			t.Fatalf("unexpected decoded product: %#v", p)
 		}
 	})
@@ -414,7 +412,6 @@ func TestInvoiceProductsConformance(t *testing.T) {
 				{
 					Title:       "Studio Pro",
 					Description: strPtr("One-month access"),
-					ImageURL:    strPtr("https://shop.example/images/studio-pro.webp"),
 					Quantity:    2,
 					UnitAmount:  "24.50",
 				},
@@ -434,6 +431,12 @@ func TestInvoiceProductsConformance(t *testing.T) {
 		if len(wire.Products) != 2 {
 			t.Fatalf("expected 2 wire products, got %d", len(wire.Products))
 		}
+		if len(wire.Products[0]) != 4 {
+			t.Fatalf("expected only four fields on full product, got %#v", wire.Products[0])
+		}
+		if _, hasImg := wire.Products[0]["image_url"]; hasImg {
+			t.Fatalf("image_url must be absent on full product, got %#v", wire.Products[0])
+		}
 		if _, hasDesc := wire.Products[1]["description"]; hasDesc {
 			t.Fatalf("expected omitted description on minimal product, got %#v", wire.Products[1])
 		}
@@ -445,7 +448,7 @@ func TestInvoiceProductsConformance(t *testing.T) {
 		}
 		second := invoice.Order.Products[1]
 		if second.Title != "Priority Support" || second.Quantity != 1 || second.UnitAmount != "12.00" ||
-			second.Description != nil || second.ImageURL != nil {
+			second.Description != nil {
 			t.Fatalf("unexpected minimal decoded product: %#v", second)
 		}
 	})

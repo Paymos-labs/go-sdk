@@ -1148,7 +1148,6 @@
             {
               "title": "Studio Pro",
               "description": "One-month access",
-              "image_url": "https://shop.example/images/studio-pro.webp",
               "quantity": 2,
               "unit_amount": "24.50"
             }
@@ -1169,7 +1168,6 @@
               {
                 "title": "Studio Pro",
                 "description": "One-month access",
-                "image_url": "https://shop.example/images/studio-pro.webp",
                 "quantity": 2,
                 "unit_amount": "24.50"
               }
@@ -1191,7 +1189,6 @@
             {
               "title": "Studio Pro",
               "description": "One-month access",
-              "image_url": "https://shop.example/images/studio-pro.webp",
               "quantity": 2,
               "unit_amount": "24.50"
             },
@@ -1217,7 +1214,6 @@
               {
                 "title": "Studio Pro",
                 "description": "One-month access",
-                "image_url": "https://shop.example/images/studio-pro.webp",
                 "quantity": 2,
                 "unit_amount": "24.50"
               },
@@ -1292,8 +1288,7 @@
           "unit_amount"
         ],
         "optional_item_fields": [
-          "description",
-          "image_url"
+          "description"
         ],
         "omit_null_optional_item_fields": true,
         "quantity_type": "integer",

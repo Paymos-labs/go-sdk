@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-11-17
+
+- refactor(checkout): remove product images from invoice products
+
 ## [2.6.0] - 2026-11-16
 
 - docs(sdk,drupal): document invoice products[] and update OpenAPI snapshot

@@ -62,7 +62,6 @@ const (
 type InvoiceProduct struct {
 	Title       string  `json:"title"`
 	Description *string `json:"description,omitempty"`
-	ImageURL    *string `json:"image_url,omitempty"`
 	Quantity    int     `json:"quantity"`
 	UnitAmount  string  `json:"unit_amount"`
 }

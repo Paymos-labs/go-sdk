@@ -1,6 +1,6 @@
 {
   "source_repository": "Paymos-labs/paymos",
   "source_path": "plugins/go-sdk",
-  "source_commit": "0ec82fd98ee82810792887163a9d189714869062",
-  "version": "2.6.0"
+  "source_commit": "6a0de0c7cca98de55db31e96f4b0b247a1e07509",
+  "version": "2.6.1"
 }
