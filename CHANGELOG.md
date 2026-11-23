@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [2.6.2] - 2026-11-23
+
+- fix: close bug batches 11-12 across SDKs, CMS plugins, workers, proxy, backup and admin
+
 ## [2.6.1] - 2026-11-17
 
 - refactor(checkout): remove product images from invoice products

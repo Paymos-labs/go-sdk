@@ -1,5 +1,7 @@
 package paymos
 
+import "encoding/json"
+
 type InvoiceStatus string
 
 const (
@@ -62,8 +64,36 @@ const (
 type InvoiceProduct struct {
 	Title       string  `json:"title"`
 	Description *string `json:"description,omitempty"`
-	Quantity    int     `json:"quantity"`
-	UnitAmount  string  `json:"unit_amount"`
+	// Deprecated: product images are no longer sent on Merchant API requests.
+	// Retained for v2.6.0 source compatibility and legacy response decoding;
+	// omitted from outbound JSON serialization.
+	ImageURL   *string `json:"-"`
+	Quantity   int     `json:"quantity"`
+	UnitAmount string  `json:"unit_amount"`
+}
+
+// UnmarshalJSON decodes InvoiceProduct including the deprecated image_url field
+// from legacy payloads while keeping ImageURL omitted on outbound json.Marshal.
+func (p *InvoiceProduct) UnmarshalJSON(data []byte) error {
+	type wireInvoiceProduct struct {
+		Title       string  `json:"title"`
+		Description *string `json:"description,omitempty"`
+		ImageURL    *string `json:"image_url,omitempty"`
+		Quantity    int     `json:"quantity"`
+		UnitAmount  string  `json:"unit_amount"`
+	}
+	var wire wireInvoiceProduct
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	*p = InvoiceProduct{
+		Title:       wire.Title,
+		Description: wire.Description,
+		ImageURL:    wire.ImageURL,
+		Quantity:    wire.Quantity,
+		UnitAmount:  wire.UnitAmount,
+	}
+	return nil
 }
 
 type CreateInvoiceParams struct {

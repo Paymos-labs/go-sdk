@@ -494,4 +494,60 @@ func TestInvoiceProductsConformance(t *testing.T) {
 			t.Fatalf("expected nil order.products for explicit null, got %#v", fromExplicitNull.Order.Products)
 		}
 	})
+
+	t.Run("deprecated ImageURL stays source-compatible and omitted on wire", func(t *testing.T) {
+		rawBody, _ := runCreate("create_single_product_legacy_image_url", fixtures.CreateSingleProduct, CreateInvoiceParams{
+			ProjectID:       "prj_1",
+			Amount:          "47.00",
+			Currency:        "USD",
+			ExternalOrderID: "order-product-single",
+			Products: []InvoiceProduct{
+				{
+					Title:       "Studio Pro",
+					Description: strPtr("One-month access"),
+					ImageURL:    strPtr("https://cdn.example/retired.png"),
+					Quantity:    2,
+					UnitAmount:  "24.50",
+				},
+			},
+		})
+		var wire struct {
+			Products []map[string]any `json:"products"`
+		}
+		if err := json.Unmarshal(rawBody, &wire); err != nil {
+			t.Fatal(err)
+		}
+		if _, hasImg := wire.Products[0]["image_url"]; hasImg {
+			t.Fatalf("deprecated ImageURL must never be serialized, got %#v", wire.Products[0])
+		}
+
+		nilImageWire, err := json.Marshal(InvoiceProduct{
+			Title:      "Priority Support",
+			ImageURL:   nil,
+			Quantity:   1,
+			UnitAmount: "12.00",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(nilImageWire), "image_url") {
+			t.Fatalf("nil ImageURL must not serialize image_url, got %s", string(nilImageWire))
+		}
+
+		var decoded InvoiceProduct
+		if err := json.Unmarshal([]byte(`{"title":"Studio Pro","description":"One-month access","image_url":"https://cdn.example/historical.png","quantity":2,"unit_amount":"24.50"}`), &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if decoded.ImageURL == nil || *decoded.ImageURL != "https://cdn.example/historical.png" {
+			t.Fatalf("expected legacy image_url to decode cleanly, got %#v", decoded)
+		}
+
+		var decodedNull InvoiceProduct
+		if err := json.Unmarshal([]byte(`{"title":"Priority Support","image_url":null,"quantity":1,"unit_amount":"12.00"}`), &decodedNull); err != nil {
+			t.Fatal(err)
+		}
+		if decodedNull.ImageURL != nil || decodedNull.Title != "Priority Support" {
+			t.Fatalf("expected null image_url to decode as nil, got %#v", decodedNull)
+		}
+	})
 }
